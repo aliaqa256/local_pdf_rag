@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>RAG Chat Interface</title>
+		<link rel="stylesheet" href="styles.css" />
+		<link
+			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+			rel="stylesheet"
+		/>
+	</head>
+	<body>
+		<div class="app-container">
+			<!-- Sidebar -->
+			<div class="sidebar" id="sidebar">
+				<div class="sidebar-header">
+					<div class="logo">
+						<i class="fas fa-robot"></i>
+						<h1>RAG Chat</h1>
+					</div>
+					<button class="new-chat-btn" id="newChatBtn">
+						<i class="fas fa-plus"></i>
+						New Chat
+					</button>
+				</div>
+
+				<div class="sidebar-content">
+					<div class="upload-section">
+						<h3>Upload PDFs</h3>
+						<div class="upload-area" id="uploadArea">
+							<i class="fas fa-cloud-upload-alt"></i>
+							<p>Drop PDF files here or click to upload</p>
+							<input
+								type="file"
+								id="fileInput"
+								multiple
+								accept=".pdf"
+								style="display: none"
+							/>
+						</div>
+						<div
+							class="upload-progress"
+							id="uploadProgress"
+							style="display: none"
+						>
+							<div class="progress-bar">
+								<div class="progress-fill" id="progressFill"></div>
+							</div>
+							<span id="progressText">Uploading...</span>
+						</div>
+					</div>
+
+					<div class="sessions-section">
+						<h3>Chat Sessions</h3>
+						<div class="sessions-list" id="sessionsList">
+							<!-- Sessions will be loaded here -->
+						</div>
+					</div>
+				</div>
+
+				<div class="sidebar-footer">
+					<div class="status-indicator">
+						<span class="status-dot" id="statusDot"></span>
+						<span id="statusText">Connecting...</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Main Chat Area -->
+			<div class="chat-container">
+				<div class="chat-header">
+					<div class="header-content">
+						<button class="sidebar-toggle" id="sidebarToggle">
+							<i class="fas fa-bars"></i>
+						</button>
+						<div class="chat-title">
+							<h2
+								id="chatTitle"
+								contenteditable="true"
+								data-placeholder="RAG Assistant"
+							>
+								RAG Assistant
+							</h2>
+							<span class="chat-subtitle" id="chatSubtitle"
+								>Ask questions about your documents</span
+							>
+						</div>
+						<div class="search-sources">
+							<input
+								type="text"
+								id="sourceSearchInput"
+								placeholder="Search which sources contain..."
+							/>
+							<button id="searchSourcesBtn">Search Sources</button>
+						</div>
+						<div class="header-actions">
+							<button class="action-btn" id="uploadBtn" title="Upload PDFs">
+								<i class="fas fa-upload"></i>
+							</button>
+							<button
+								class="action-btn flush-btn"
+								id="flushBtn"
+								title="Clear All Data"
+							>
+								<i class="fas fa-trash-alt"></i>
+							</button>
+							<button class="action-btn" id="settingsBtn" title="Settings">
+								<i class="fas fa-cog"></i>
+							</button>
+						</div>
+					</div>
+				</div>
+
+				<div class="chat-messages" id="chatMessages">
+					<div class="welcome-message">
+						<div class="welcome-icon">
+							<i class="fas fa-robot"></i>
+						</div>
+						<div class="welcome-content">
+							<h3>Welcome to RAG Chat!</h3>
+							<p>
+								Upload PDF documents and start asking questions. I'll help you
+								find information from your documents.
+							</p>
+							<div class="welcome-actions">
+								<button class="welcome-btn" id="welcomeUploadBtn">
+									<i class="fas fa-upload"></i>
+									Upload PDFs
+								</button>
+								<button class="welcome-btn" id="welcomeNewChatBtn">
+									<i class="fas fa-comments"></i>
+									Start New Chat
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="chat-input-container">
+					<div class="input-wrapper">
+						<textarea
+							id="messageInput"
+							placeholder="Ask a question about your documents..."
+							rows="1"
+							maxlength="1000"
+						></textarea>
+						<button id="sendButton" class="send-button" disabled>
+							<i class="fas fa-paper-plane"></i>
+						</button>
+					</div>
+					<div class="input-footer">
+						<span class="char-count" id="charCount">0/1000</span>
+						<span class="model-info">Powered by TinyLlama</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="loading-overlay" id="loadingOverlay">
+			<div class="loading-spinner">
+				<i class="fas fa-spinner fa-spin"></i>
+				<span>Thinking...</span>
+			</div>
+		</div>
+
+		<script src="script.js"></script>
+	</body>
+</html>

@@ -1,0 +1,113 @@
+---
+alwaysApply: true
+---
+
+{
+  "projectName": "Local RAG PDF Search Service",
+  "projectDescription": "A local web service to index and query a large collection of PDF documents using a RAG architecture with a Go backend.",
+  "stack": {
+    "backendLanguage": "Go",
+    "webFramework": "Fiber",
+    "pdfParser": "unipdf or pdfcpu",
+    "embeddingModel": "Sentence-Transformers (local)",
+    "vectorDatabase": "chromem-go or Weaviate",
+    "llm": "Ollama (Llama 3 or Mistral)",
+    "frontendFramework": "React or Vue.js",
+    "deployment": "Docker"
+  },
+  "todos": [
+    {
+      "category": "Project Setup",
+      "tasks": [
+        {
+          "id": "setup-01",
+          "task": "Initialize Go module for the project.",
+          "status": "pending",
+          "details": "Create a new directory and run 'go mod init <module-path>'."
+        },
+        {
+          "id": "setup-02",
+          "task": "Set up Docker and Docker Compose for local development.",
+          "status": "pending",
+          "details": "Create a Dockerfile for the Go application and a docker-compose.yml for all services (Go app, vector DB, Ollama)."
+        }
+      ]
+    },
+    {
+      "category": "Backend Development (Fiber API)",
+      "tasks": [
+        {
+          "id": "backend-01",
+          "task": "Implement a basic Fiber web server.",
+          "status": "pending",
+          "details": "Set up a server that listens on a specified port and has a simple health check endpoint (e.g., '/health')."
+        },
+        {
+          "id": "backend-02",
+          "task": "Create API endpoint for PDF uploads.",
+          "status": "pending",
+          "details": "Endpoint should handle multipart/form-data to accept file uploads and save them to a designated 'uploads' directory."
+        },
+        {
+          "id": "backend-03",
+          "task": "Implement PDF processing logic.",
+          "status": "pending",
+          "details": "Create a service to: 1. Read a PDF file. 2. Extract text content. 3. Split the text into smaller, meaningful chunks."
+        },
+        {
+          "id": "backend-04",
+          "task": "Integrate the embedding model.",
+          "status": "pending",
+          "details": "For each text chunk, generate a vector embedding using a local sentence-transformer model."
+        },
+        {
+          "id": "backend-05",
+          "task": "Set up the vector database connection.",
+          "status": "pending",
+          "details": "Connect to the chosen vector database (e.g., Weaviate) and implement logic to store the text chunks and their corresponding embeddings."
+        },
+        {
+          "id": "backend-06",
+          "task": "Build the background processing queue for ingestion.",
+          "status": "pending",
+          "details": "When a PDF is uploaded, add a job to a background queue to handle processing, embedding, and indexing to avoid blocking the API."
+        },
+        {
+          "id": "backend-07",
+          "task": "Create the query/search API endpoint.",
+          "status": "pending",
+          "details": "This endpoint will: 1. Take a user's text query. 2. Embed the query. 3. Search the vector DB for similar chunks. 4. Pass the query and retrieved context to the LLM. 5. Return the LLM's generated answer."
+        },
+        {
+          "id": "backend-08",
+          "task": "Integrate with Ollama.",
+          "status": "pending",
+          "details": "Create a client to communicate with the local Ollama service to get the final answer."
+        }
+      ]
+    },
+    {
+      "category": "Frontend Development",
+      "tasks": [
+        {
+          "id": "frontend-01",
+          "task": "Set up the frontend project (React/Vue).",
+          "status": "pending",
+          "details": "Use a tool like Create React App or Vite to bootstrap the application."
+        },
+        {
+          "id": "frontend-02",
+          "task": "Create the document management UI.",
+          "status": "pending",
+          "details": "Build a component for uploading PDFs and viewing the status of indexed documents."
+        },
+        {
+          "id": "frontend-03",
+          "task": "Develop the main chat interface.",
+          "status": "pending",
+          "details": "Build the UI for users to ask questions and see the AI-generated responses, including the source documents."
+        }
+      ]
+    }
+  ]
+}
