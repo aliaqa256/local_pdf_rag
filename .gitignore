@@ -45,3 +45,5 @@ Thumbs.db
 # Coverage files
 coverage.out
 
+# Node.js dependencies
+node_modules/
