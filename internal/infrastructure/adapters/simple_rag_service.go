@@ -12,7 +12,7 @@ import (
 )
 
 type SimpleRAGService struct {
-	OllamaAdapter  *OllamaAdapter
+	LLM            LLMClient
 	MinIOAdapter   *MinIOAdapter
 	MySQLAdapter   *MySQLAdapter
 	PDFProcessor   *PDFProcessor
@@ -33,13 +33,13 @@ type ScoredChunk struct {
 }
 
 func NewSimpleRAGService(
-	ollamaAdapter *OllamaAdapter,
+	llm LLMClient,
 	minioAdapter *MinIOAdapter,
 	mysqlAdapter *MySQLAdapter,
 	cfg *config.Config,
 ) *SimpleRAGService {
 	return &SimpleRAGService{
-		OllamaAdapter:  ollamaAdapter,
+		LLM:            llm,
 		MinIOAdapter:   minioAdapter,
 		MySQLAdapter:   mysqlAdapter,
 		PDFProcessor:   NewPDFProcessor(),
@@ -198,10 +198,10 @@ func (r *SimpleRAGService) Query(ctx context.Context, question string) (*SimpleR
 		return scoredChunks[i].Score > scoredChunks[j].Score
 	})
 
-	// Take top 3 most relevant chunks
+	// Take top 5 most relevant chunks
 	topChunks := scoredChunks
-	if len(scoredChunks) > 3 {
-		topChunks = scoredChunks[:3]
+	if len(scoredChunks) > 5 {
+		topChunks = scoredChunks[:5]
 	}
 
 	// Build context from most relevant chunks
@@ -209,7 +209,7 @@ func (r *SimpleRAGService) Query(ctx context.Context, question string) (*SimpleR
 	bestScore := 0.0
 
 	for _, scoredChunk := range topChunks {
-		if scoredChunk.Score > 0.1 { // Only include chunks with some relevance
+		if scoredChunk.Score > 0.2 { // Only include chunks with some relevance
 			contextParts = append(contextParts, scoredChunk.Chunk.ChunkText)
 
 			// Track the best score
@@ -234,8 +234,19 @@ func (r *SimpleRAGService) Query(ctx context.Context, question string) (*SimpleR
 
 	context := strings.Join(contextParts, "\n\n")
 
-	// Generate answer using Ollama with context
-	prompt := fmt.Sprintf(`Answer this question using ONLY the information provided in the context below. Give a direct, specific answer.
+	// Generate answer using LLM with context
+	var prompt string
+	if r.Config != nil && r.Config.AppLanguage == "fa" {
+		prompt = fmt.Sprintf(`فقط با استفاده از اطلاعات «متن زمینه» زیر پاسخ بده. پاسخ باید دقیق، واضح و به زبان فارسی باشد. اگر پاسخ در متن نبود، فقط بگو: «اطلاعات کافی در متن موجود نیست».
+
+متن زمینه:
+%s
+
+پرسش: %s
+
+پاسخ:`, context, question)
+	} else {
+		prompt = fmt.Sprintf(`Answer this question using ONLY the information provided in the context below. Give a direct, specific answer.
 
 CONTEXT:
 %s
@@ -243,20 +254,27 @@ CONTEXT:
 QUESTION: %s
 
 ANSWER:`, context, question)
+	}
 
-	answer, err := r.OllamaAdapter.GenerateText(ctx, prompt)
+	answer, err := r.LLM.GenerateText(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate answer: %w", err)
 	}
 
-	// Check if the answer indicates lack of knowledge
+	// Check if the answer indicates lack of knowledge (EN + FA)
 	answerLower := strings.ToLower(answer)
+	missingFa := strings.Contains(answer, "اطلاعات کافی در متن موجود نیست")
 	if strings.Contains(answerLower, "i don't have that information") ||
 		strings.Contains(answerLower, "i don't have enough information") ||
 		strings.Contains(answerLower, "not found in the provided documents") ||
-		strings.Contains(answerLower, "not available in the context") {
+		strings.Contains(answerLower, "not available in the context") ||
+		missingFa {
+		msg := "I don't have that information in the provided documents."
+		if r.Config != nil && r.Config.AppLanguage == "fa" {
+			msg = "این اطلاعات در اسناد موجود نیست."
+		}
 		response := &SimpleRAGResponse{
-			Answer:     "I don't have that information in the provided documents.",
+			Answer:     msg,
 			Sources:    []string{},
 			Confidence: 0.0,
 			Context:    context,
@@ -336,79 +354,86 @@ func (r *SimpleRAGService) GetDocumentStats(ctx context.Context) (map[string]int
 	}, nil
 }
 
-// CalculateRelevanceScore calculates a sophisticated relevance score
+// CalculateRelevanceScore calculates a relevance score using token matches,
+// simple term-frequency weighting, and query coverage. This is a lightweight
+// alternative to embeddings to improve ranking quality.
 func (r *SimpleRAGService) CalculateRelevanceScore(questionWords []string, chunkText string) float64 {
 	score := 0.0
-	chunkWords := strings.Fields(strings.ToLower(chunkText))
-	questionLower := strings.ToLower(strings.Join(questionWords, " "))
-	chunkLower := strings.ToLower(chunkText)
 
-	// 1. Exact phrase matching (highest priority)
-	if strings.Contains(chunkLower, questionLower) {
-		score += 100.0
-	}
-
-	// 2. Exact word matches (case insensitive)
-	exactMatches := 0
-	for _, qWord := range questionWords {
-		qWordLower := strings.ToLower(qWord)
-		for _, cWord := range chunkWords {
-			if cWord == qWordLower {
-				exactMatches++
-				score += 20.0
+	// Normalize and tokenize
+	normalize := func(s string) string {
+		s = strings.ToLower(s)
+		// Basic accent folding
+		replacements := map[string]string{
+			"ó": "o", "á": "a", "é": "e", "í": "i", "ú": "u",
+			"ñ": "n", "ç": "c", "ü": "u", "ö": "o", "ä": "a",
+		}
+		for old, new := range replacements {
+			s = strings.ReplaceAll(s, old, new)
+		}
+		// Replace non-alphanumerics with space
+		var b strings.Builder
+		for _, r := range s {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == ' ' {
+				b.WriteRune(r)
+			} else {
+				b.WriteRune(' ')
 			}
 		}
+		return strings.Join(strings.Fields(b.String()), " ")
 	}
 
-	// 3. Partial word matches
-	for _, qWord := range questionWords {
-		qWordLower := strings.ToLower(qWord)
-		if len(qWordLower) > 2 {
-			for _, cWord := range chunkWords {
-				if strings.Contains(cWord, qWordLower) || strings.Contains(qWordLower, cWord) {
-					score += 5.0
+	normalizedChunk := normalize(chunkText)
+	normalizedQuestion := normalize(strings.Join(questionWords, " "))
+
+	chunkTokens := strings.Fields(normalizedChunk)
+	questionTokens := strings.Fields(normalizedQuestion)
+	if len(chunkTokens) == 0 || len(questionTokens) == 0 {
+		return 0.0
+	}
+
+	// Exact phrase bonus
+	if strings.Contains(normalizedChunk, normalizedQuestion) && len(normalizedQuestion) >= 8 {
+		score += 40.0
+	}
+
+	// Build term frequency for chunk
+	chunkTF := make(map[string]int)
+	for _, t := range chunkTokens {
+		chunkTF[t]++
+	}
+
+	// Match scoring with TF weighting and partials
+	covered := 0
+	for _, q := range questionTokens {
+		tf := chunkTF[q]
+		if tf > 0 {
+			covered++
+			// Heavier weight for exact matches
+			score += 12.0 * (1.0 + 0.1*float64(tf-1))
+			continue
+		}
+		// Partial match if no exact; only for tokens length >= 4
+		if len(q) >= 4 {
+			partialHit := false
+			for token := range chunkTF {
+				if strings.Contains(token, q) || strings.Contains(q, token) {
+					partialHit = true
+					break
 				}
 			}
+			if partialHit {
+				score += 4.0
+			}
 		}
 	}
 
-	// 4. Handle encoding issues - try with common character substitutions
-	normalizedQuestion := strings.ToLower(strings.Join(questionWords, " "))
-	normalizedChunk := strings.ToLower(chunkText)
+	// Coverage reward: proportion of query terms matched
+	coverage := float64(covered) / float64(len(questionTokens))
+	score += 20.0 * coverage
 
-	// Common character encoding issues
-	replacements := map[string]string{
-		"ó": "o", "á": "a", "é": "e", "í": "i", "ú": "u",
-		"ñ": "n", "ç": "c", "ü": "u", "ö": "o", "ä": "a",
-		"": "o", // Common replacement for ó
-	}
-
-	for old, new := range replacements {
-		normalizedQuestion = strings.ReplaceAll(normalizedQuestion, old, new)
-		normalizedChunk = strings.ReplaceAll(normalizedChunk, old, new)
-	}
-
-	// Check for matches in normalized text
-	if strings.Contains(normalizedChunk, normalizedQuestion) {
-		score += 50.0
-	}
-
-	// Check for word matches in normalized text
-	normalizedQuestionWords := strings.Fields(normalizedQuestion)
-	for _, qWord := range normalizedQuestionWords {
-		if len(qWord) > 2 && strings.Contains(normalizedChunk, qWord) {
-			score += 10.0
-		}
-	}
-
-	// 4. No biased keywords - pure text matching only
-
-	// 5. Normalize by question length to avoid bias
-	if len(questionWords) > 0 {
-		score = score / float64(len(questionWords))
-	}
-
-	// 6. No length bias - treat all chunks equally
+	// Normalize by query length to reduce bias
+	score = score / (1.0 + 0.05*float64(len(questionTokens)))
 
 	return score
 }
@@ -528,10 +553,10 @@ func (r *SimpleRAGService) searchAllDocuments(ctx context.Context, question stri
 		return scoredChunks[i].Score > scoredChunks[j].Score
 	})
 
-	// Take top 3 most relevant chunks
+	// Take top N most relevant chunks
 	topChunks := scoredChunks
-	if len(scoredChunks) > 3 {
-		topChunks = scoredChunks[:3]
+	if len(scoredChunks) > 8 {
+		topChunks = scoredChunks[:8]
 	}
 
 	// Build context from most relevant chunks
@@ -549,6 +574,35 @@ func (r *SimpleRAGService) searchAllDocuments(ctx context.Context, question stri
 		}
 	}
 
+	// If no context and app language is Persian, attempt cross-lingual fallback: translate question to English and retry retrieval
+	if len(contextParts) == 0 && r.Config != nil && r.Config.AppLanguage == "fa" {
+		translated, tErr := r.translateToEnglish(ctx, question)
+		if tErr == nil && strings.TrimSpace(translated) != "" {
+			enWords := strings.Fields(strings.ToLower(translated))
+			// Rescore
+			rescored := make([]ScoredChunk, len(allChunks))
+			for i, chunk := range allChunks {
+				score := r.CalculateRelevanceScore(enWords, strings.ToLower(chunk.ChunkText))
+				rescored[i] = ScoredChunk{Chunk: chunk, Score: score}
+			}
+			sort.Slice(rescored, func(i, j int) bool { return rescored[i].Score > rescored[j].Score })
+			topChunks = rescored
+			if len(rescored) > 3 {
+				topChunks = rescored[:3]
+			}
+			contextParts = contextParts[:0]
+			bestScore = 0.0
+			for _, scoredChunk := range topChunks {
+				if scoredChunk.Score > 0.1 {
+					contextParts = append(contextParts, scoredChunk.Chunk.ChunkText)
+					if scoredChunk.Score > bestScore {
+						bestScore = scoredChunk.Score
+					}
+				}
+			}
+		}
+	}
+
 	if len(contextParts) == 0 {
 		response := &SimpleRAGResponse{
 			Answer:     "I don't have enough relevant information to answer that question accurately.",
@@ -562,9 +616,13 @@ func (r *SimpleRAGService) searchAllDocuments(ctx context.Context, question stri
 		return response, nil
 	}
 
-	context := strings.Join(contextParts, "\n\n")
+	// Build final context and cap its length to avoid exceeding model limits
+	context := strings.Join(contextParts, "\n\n---\n\n")
+	if len(context) > 12000 {
+		context = context[:12000]
+	}
 
-	// Generate answer using Ollama with context
+	// Generate answer using LLM with context
 	prompt := fmt.Sprintf(`Answer this question using ONLY the information provided in the context below. Give a direct, specific answer.
 
 CONTEXT:
@@ -574,7 +632,7 @@ QUESTION: %s
 
 ANSWER:`, context, question)
 
-	answer, err := r.OllamaAdapter.GenerateText(ctx, prompt)
+	answer, err := r.LLM.GenerateText(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate answer: %w", err)
 	}
@@ -621,4 +679,10 @@ ANSWER:`, context, question)
 	// Store query in database
 	r.storeQuery(ctx, question, response)
 	return response, nil
+}
+
+// translateToEnglish uses the LLM to translate input text to English, returning plain text only
+func (r *SimpleRAGService) translateToEnglish(ctx context.Context, text string) (string, error) {
+	prompt := "Translate the following text to English. Return only the translation without quotes or extra commentary.\n\nText:\n" + text
+	return r.LLM.GenerateText(ctx, prompt)
 }

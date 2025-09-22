@@ -1,0 +1,24 @@
+{
+    "name": "rag-mcp-server",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "bin": {
+        "rag-mcp-server": "dist/server.js"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/server.js",
+        "dev": "tsx watch server.ts"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^0.4.1",
+        "node-fetch": "^3.3.2",
+        "zod": "^3.23.8"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.30",
+        "tsx": "^4.19.0",
+        "typescript": "^5.6.3"
+    }
+}

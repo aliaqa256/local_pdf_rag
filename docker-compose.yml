@@ -89,6 +89,11 @@ services:
     ports:
       - "8090:8090"
     environment:
+      - LLM_PROVIDER=ollama
+      - GOOGLE_API_KEY=
+      - GOOGLE_MODEL=
+      - GOOGLE_DNS=
+      - APP_LANGUAGE=fa
       - PORT=8090
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
@@ -103,12 +108,11 @@ services:
       - QDRANT_PORT=6333
       - OLLAMA_HOST=ollama
       - OLLAMA_PORT=11434
-      - OLLAMA_MODEL=tinyllama
+      - OLLAMA_MODEL=llama3:8b
     depends_on:
       - mysql
       - minio
       - qdrant
-      - ollama
     restart: unless-stopped
     healthcheck:
       test:

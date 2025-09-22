@@ -36,15 +36,28 @@ func main() {
 		log.Fatalf("Failed to connect to MinIO: %v", err)
 	}
 
-	// Connect to Ollama
-	ollamaAdapter, err := adapters.NewOllamaAdapter(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to Ollama: %v", err)
+	// Initialize LLM provider
+	var llm adapters.LLMClient
+	var modelName string
+	if strings.ToLower(cfg.LLMProvider) == "google" {
+		googleAdapter, err := adapters.NewGoogleGeminiAdapter(cfg)
+		if err != nil {
+			log.Fatalf("Failed to initialize Google Gemini: %v", err)
+		}
+		llm = googleAdapter
+		modelName = cfg.GoogleModel
+	} else {
+		ollamaAdapter, err := adapters.NewOllamaAdapter(cfg)
+		if err != nil {
+			log.Fatalf("Failed to connect to Ollama: %v", err)
+		}
+		defer ollamaAdapter.Close()
+		llm = ollamaAdapter
+		modelName = cfg.OllamaModel
 	}
-	defer ollamaAdapter.Close()
 
 	// Initialize simple RAG service (without vector search for now)
-	ragService := adapters.NewSimpleRAGService(ollamaAdapter, minioAdapter, mysqlAdapter, cfg)
+	ragService := adapters.NewSimpleRAGService(llm, minioAdapter, mysqlAdapter, cfg)
 
 	// Initialize database schema
 	err = ragService.DatabaseSchema.CreateTables()
@@ -82,7 +95,7 @@ func main() {
 				"mysql":  "connected",
 				"minio":  "connected",
 				"qdrant": "connected",
-				"ollama": "connected",
+				"llm":    "connected",
 			},
 		})
 	})
@@ -102,14 +115,23 @@ func main() {
 			minioHealth = "unhealthy"
 		}
 
-		// Check Ollama
-		ollamaHealth := "healthy"
-		if err := ollamaAdapter.HealthCheck(ctx); err != nil {
-			ollamaHealth = "unhealthy"
+		// Check LLM
+		llmHealth := "healthy"
+		// Best-effort: we consider Google healthy if key present, Ollama via health check
+		if strings.ToLower(cfg.LLMProvider) == "google" {
+			if cfg.GoogleAPIKey == "" {
+				llmHealth = "unhealthy"
+			}
+		} else {
+			if oa, ok := llm.(*adapters.OllamaAdapter); ok {
+				if err := oa.HealthCheck(ctx); err != nil {
+					llmHealth = "unhealthy"
+				}
+			}
 		}
 
 		overallHealth := "healthy"
-		if mysqlHealth != "healthy" || minioHealth != "healthy" || ollamaHealth != "healthy" {
+		if mysqlHealth != "healthy" || minioHealth != "healthy" || llmHealth != "healthy" {
 			overallHealth = "unhealthy"
 		}
 
@@ -117,14 +139,14 @@ func main() {
 			"status":  overallHealth,
 			"service": "rag-service",
 			"services": fiber.Map{
-				"mysql":  mysqlHealth,
-				"minio":  minioHealth,
-				"ollama": ollamaHealth,
+				"mysql": mysqlHealth,
+				"minio": minioHealth,
+				"llm":   llmHealth,
 			},
 		})
 	})
 
-	// Chat endpoint to test Ollama
+	// Chat endpoint to test LLM
 	app.Post("/chat", func(c *fiber.Ctx) error {
 		var request struct {
 			Message string `json:"message"`
@@ -143,7 +165,7 @@ func main() {
 		}
 
 		ctx := context.Background()
-		response, err := ollamaAdapter.GenerateText(ctx, request.Message)
+		response, err := llm.GenerateText(ctx, request.Message)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error":   "Failed to generate response",
@@ -153,7 +175,7 @@ func main() {
 
 		return c.JSON(fiber.Map{
 			"response": response,
-			"model":    cfg.OllamaModel,
+			"model":    modelName,
 		})
 	})
 

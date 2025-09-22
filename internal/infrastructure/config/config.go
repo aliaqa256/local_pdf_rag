@@ -9,6 +9,9 @@ type Config struct {
 	// Server
 	Port string
 
+	// App
+	AppLanguage string
+
 	// MySQL
 	MySQLHost     string
 	MySQLPort     string
@@ -30,6 +33,14 @@ type Config struct {
 	OllamaHost  string
 	OllamaPort  string
 	OllamaModel string
+
+	// LLM Provider
+	LLMProvider string
+
+	// Google Gemini
+	GoogleAPIKey string
+	GoogleModel  string
+	GoogleDNS    string
 }
 
 func Load() *Config {
@@ -38,6 +49,9 @@ func Load() *Config {
 	return &Config{
 		// Server
 		Port: getEnv("PORT", "8090"),
+
+		// App
+		AppLanguage: getEnv("APP_LANGUAGE", "en"),
 
 		// MySQL
 		MySQLHost:     getEnv("MYSQL_HOST", "localhost"),
@@ -60,6 +74,14 @@ func Load() *Config {
 		OllamaHost:  getEnv("OLLAMA_HOST", "localhost"),
 		OllamaPort:  getEnv("OLLAMA_PORT", "11434"),
 		OllamaModel: getEnv("OLLAMA_MODEL", "llama3.2:3b"),
+
+		// LLM Provider
+		LLMProvider: getEnv("LLM_PROVIDER", "ollama"),
+
+		// Google Gemini
+		GoogleAPIKey: getEnv("GOOGLE_API_KEY", ""),
+		GoogleModel:  getEnv("GOOGLE_MODEL", "gemini-1.5-flash"),
+		GoogleDNS:    getEnv("GOOGLE_DNS", ""),
 	}
 }
 
