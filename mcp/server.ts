@@ -1,35 +1,26 @@
 #!/usr/bin/env -S node --enable-source-maps
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/transports/stdio.js";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import fetch from "node-fetch";
 
 const RAG_BASE_URL = process.env.RAG_BASE_URL || "http://localhost:8080";
 
 async function main() {
-	const transport = new StdioServerTransport();
-	const server = new Server(
-		{
-			name: "rag-mcp-server",
-			version: "0.1.0",
-			capabilities: {
-				tools: {},
-			},
-		},
-		transport
-	);
+	const mcpServer = new McpServer({
+		name: "rag-mcp-server",
+		version: "0.1.0",
+	});
 
 	// Tool: query RAG
-	server.tool(
+	mcpServer.registerTool(
+		"rag.query",
 		{
-			name: "rag.query",
 			description:
 				"Ask a question against the local RAG knowledge base and get an answer with sources.",
-			inputSchema: z.object({
-				question: z.string().min(1),
-			}),
+			inputSchema: { question: z.string().min(1) },
 		},
-		async ({ question }) => {
+		async ({ question }: { question: string }) => {
 			const res = await fetch(`${RAG_BASE_URL}/query`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -52,16 +43,14 @@ async function main() {
 	);
 
 	// Tool: search sources
-	server.tool(
+	mcpServer.registerTool(
+		"rag.search_sources",
 		{
-			name: "rag.search_sources",
 			description:
 				"Find relevant source documents for a query, returning document ids, filenames, and snippets.",
-			inputSchema: z.object({
-				query: z.string().min(1),
-			}),
+			inputSchema: { query: z.string().min(1) },
 		},
-		async ({ query }) => {
+		async ({ query }: { query: string }) => {
 			const res = await fetch(`${RAG_BASE_URL}/search-sources`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -79,17 +68,23 @@ async function main() {
 	);
 
 	// Tool: get file (download PDF by document id and filename)
-	server.tool(
+	mcpServer.registerTool(
+		"rag.get_file",
 		{
-			name: "rag.get_file",
 			description:
 				"Download a stored PDF by documentId and filename. Returns base64 content.",
-			inputSchema: z.object({
+			inputSchema: {
 				documentId: z.string().min(1),
 				filename: z.string().min(1),
-			}),
+			},
 		},
-		async ({ documentId, filename }) => {
+		async ({
+			documentId,
+			filename,
+		}: {
+			documentId: string;
+			filename: string;
+		}) => {
 			const url = `${RAG_BASE_URL}/files/${encodeURIComponent(
 				documentId
 			)}/${encodeURIComponent(filename)}`;
@@ -116,7 +111,8 @@ async function main() {
 		}
 	);
 
-	await server.connect();
+	const transport = new StdioServerTransport();
+	await mcpServer.connect(transport);
 }
 
 main().catch((err) => {
