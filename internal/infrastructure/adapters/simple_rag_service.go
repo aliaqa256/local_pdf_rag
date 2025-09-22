@@ -234,6 +234,43 @@ func (r *SimpleRAGService) Query(ctx context.Context, question string) (*SimpleR
 
 	context := strings.Join(contextParts, "\n\n")
 
+	// If LLM is disabled, return retrieval-only response using context
+	if r.Config != nil && strings.ToLower(r.Config.LLMProvider) == "none" {
+		trimmed := context
+		if len(trimmed) > 1200 {
+			trimmed = trimmed[:1200] + "..."
+		}
+		answerText := trimmed
+		if r.Config.AppLanguage == "fa" {
+			answerText = "حالت فقط بازیابی فعال است. بخش‌های مرتبط:\n" + trimmed
+		} else {
+			answerText = "Retrieval-only mode. Relevant context:\n" + trimmed
+		}
+
+		// Include multiple relevant sources with document ID for download
+		var sources []string
+		topSources := r.getTopRelevantSources(questionWords, documents, 5)
+		for _, source := range topSources {
+			formattedSource := r.formatSourceWithDocumentID(source.Filename, documents)
+			sources = append(sources, formattedSource)
+		}
+
+		confidence := bestScore
+		if confidence > 1.0 {
+			confidence = 1.0
+		}
+
+		response := &SimpleRAGResponse{
+			Answer:     answerText,
+			Sources:    sources,
+			Confidence: confidence,
+			Context:    context,
+		}
+		// Store query in database
+		r.storeQuery(ctx, question, response)
+		return response, nil
+	}
+
 	// Generate answer using LLM with context
 	var prompt string
 	if r.Config != nil && r.Config.AppLanguage == "fa" {

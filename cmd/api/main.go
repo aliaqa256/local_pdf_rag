@@ -36,7 +36,7 @@ func main() {
 		log.Fatalf("Failed to connect to MinIO: %v", err)
 	}
 
-	// Initialize LLM provider
+	// Initialize LLM provider (optional)
 	var llm adapters.LLMClient
 	var modelName string
 	if strings.ToLower(cfg.LLMProvider) == "google" {
@@ -46,7 +46,7 @@ func main() {
 		}
 		llm = googleAdapter
 		modelName = cfg.GoogleModel
-	} else {
+	} else if strings.ToLower(cfg.LLMProvider) == "ollama" {
 		ollamaAdapter, err := adapters.NewOllamaAdapter(cfg)
 		if err != nil {
 			log.Fatalf("Failed to connect to Ollama: %v", err)
@@ -54,6 +54,10 @@ func main() {
 		defer ollamaAdapter.Close()
 		llm = ollamaAdapter
 		modelName = cfg.OllamaModel
+	} else {
+		// LLM disabled (retrieval-only)
+		llm = adapters.LLMClient(nil)
+		modelName = "none"
 	}
 
 	// Initialize simple RAG service (without vector search for now)
@@ -115,23 +119,29 @@ func main() {
 			minioHealth = "unhealthy"
 		}
 
-		// Check LLM
-		llmHealth := "healthy"
-		// Best-effort: we consider Google healthy if key present, Ollama via health check
-		if strings.ToLower(cfg.LLMProvider) == "google" {
+		// Check LLM (optional)
+		llmHealth := "disabled"
+		provider := strings.ToLower(cfg.LLMProvider)
+		if provider == "google" {
+			llmHealth = "healthy"
 			if cfg.GoogleAPIKey == "" {
 				llmHealth = "unhealthy"
 			}
-		} else {
+		} else if provider == "ollama" {
+			llmHealth = "unhealthy"
 			if oa, ok := llm.(*adapters.OllamaAdapter); ok {
-				if err := oa.HealthCheck(ctx); err != nil {
-					llmHealth = "unhealthy"
+				if err := oa.HealthCheck(ctx); err == nil {
+					llmHealth = "healthy"
 				}
 			}
 		}
 
 		overallHealth := "healthy"
-		if mysqlHealth != "healthy" || minioHealth != "healthy" || llmHealth != "healthy" {
+		if mysqlHealth != "healthy" || minioHealth != "healthy" {
+			overallHealth = "unhealthy"
+		}
+		// Treat LLM "disabled" as acceptable
+		if llmHealth != "healthy" && llmHealth != "disabled" {
 			overallHealth = "unhealthy"
 		}
 
