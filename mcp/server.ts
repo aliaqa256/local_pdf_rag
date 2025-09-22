@@ -14,7 +14,7 @@ async function main() {
 
 	// Tool: query RAG
 	mcpServer.registerTool(
-		"rag.query",
+		"rag_query",
 		{
 			description:
 				"Ask a question against the local RAG knowledge base and get an answer with sources.",
@@ -44,7 +44,7 @@ async function main() {
 
 	// Tool: search sources
 	mcpServer.registerTool(
-		"rag.search_sources",
+		"rag_search_sources",
 		{
 			description:
 				"Find relevant source documents for a query, returning document ids, filenames, and snippets.",
@@ -69,7 +69,7 @@ async function main() {
 
 	// Tool: get file (download PDF by document id and filename)
 	mcpServer.registerTool(
-		"rag.get_file",
+		"rag_get_file",
 		{
 			description:
 				"Download a stored PDF by documentId and filename. Returns base64 content.",
